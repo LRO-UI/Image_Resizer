@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Image resizer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='7' width='18' height='18' transform='rotate(45 16 16)' fill='%233f6fa8' stroke='%23e7eaf0' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:wght@400..900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    color-scheme:dark;
+    --bg:#0d0f14; --panel:#14171f; --panel-edge:#232732;
+    --blue:#3f6fa8; --blue2:#5c7f9e; --steel:#7c8698;
+    --ink:#e7eaf0; --ink-soft:#727c8c; --line:#252a35;
+    --danger:#c77a7a; --ok:#7fa88a; --warn:#c9a86a;
+    --font-ui:'Space Grotesk', system-ui, sans-serif;
+    --font-display:'Playfair Display', Georgia, serif;
+    --font-mono:'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  }
+  html{ scroll-padding-top:env(safe-area-inset-top,0px); height:100%; }
+  *{ box-sizing:border-box; }
+  [hidden]{ display:none !important; }
+  body{ margin:0; height:100%; background:var(--bg); color:var(--ink); font-family:var(--font-ui); display:flex; flex-direction:column; overflow:hidden; }
+  header{ padding:18px 30px; border-bottom:4px double var(--blue2); display:flex; align-items:center; gap:16px; flex-wrap:wrap; flex:none; }
+  header h1{ margin:0; font-family:var(--font-display); font-weight:800; font-size:1.5rem; letter-spacing:.02em; }
+  .count{ font-size:.72rem; color:var(--blue2); letter-spacing:.06em; }
+  .head-actions{ margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  #modeSeg{ min-width:320px; }
+  header button.generate{ width:auto; padding:11px 18px; }
+
+  .app{ display:flex; flex:1; min-height:0; }
+  .stage{ flex:1 1 auto; min-width:0; padding:26px; display:flex; border-right:1px solid var(--line); }
+  .rail-frame{ position:relative; flex:1; display:flex; min-width:0; min-height:0; }
+  .rail-frame::before, .rail-frame::after{ content:''; position:absolute; pointer-events:none; z-index:2; }
+  .rail-frame::before{ inset:8px; border:1px solid rgba(231,234,240,.6); }
+  .rail-frame::after{ inset:13px; border:1px solid rgba(92,127,158,.35); }
+  .rail-d{ position:absolute; width:10px; height:10px; z-index:3; background:var(--blue); border:2px solid var(--bg); transform:translate(-50%,-50%) rotate(45deg); box-shadow:0 0 0 1px rgba(231,234,240,.5); }
+  .rail-d.tl{top:8px; left:8px;} .rail-d.tr{top:8px; left:calc(100% - 8px);}
+  .rail-d.bl{top:calc(100% - 8px); left:8px;} .rail-d.br{top:calc(100% - 8px); left:calc(100% - 8px);}
+  .preview{ flex:1; margin:22px; padding:16px 18px 30px; overflow:auto; min-width:0; min-height:0; position:relative; z-index:4; display:flex; flex-direction:column; gap:30px; }
+  .preview.drag{ outline:1px dashed var(--blue2); outline-offset:-6px; }
+
+  .group-title{ display:flex; align-items:center; gap:10px; text-transform:uppercase; letter-spacing:.26em; font-size:.66rem; color:var(--ink-soft); margin-bottom:14px; }
+  .group-title::before{ content:''; width:6px; height:6px; background:var(--blue); transform:rotate(45deg); flex:none; }
+  .group-title::after{ content:''; flex:1; height:3px; border-top:1px solid var(--blue); border-bottom:1px solid var(--blue2); }
+  .hint{ font-size:.7rem; color:var(--ink-soft); line-height:1.5; margin-top:8px; }
+
+  .empty-state{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; text-align:center; min-height:360px; border:1px dashed var(--line); padding:30px; cursor:pointer; }
+  .empty-state:hover{ border-color:var(--blue2); }
+  .empty-state h2{ margin:0; font-family:var(--font-display); font-weight:700; font-size:1.4rem; }
+  .empty-state p{ margin:0; max-width:46ch; font-size:.86rem; line-height:1.55; color:var(--ink-soft); }
+
+  /* Cards */
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:18px; align-items:start; }
+  .card{ background:var(--panel); border:1px solid var(--line); padding:12px 12px 10px; box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--panel-edge); min-width:0; }
+  .card.wide{ grid-column:span 2; }
+  .card-top{ display:flex; justify-content:space-between; gap:8px; align-items:baseline; margin-bottom:10px; }
+  .card-top b{ font-size:.8rem; font-weight:500; }
+  .card-top .plat{ font-size:.66rem; color:var(--ink-soft); display:block; margin-top:2px; letter-spacing:.04em; }
+  .card-top code{ font-family:var(--font-mono); font-size:.7rem; color:#8fb0d6; white-space:nowrap; }
+  .cv-wrap{ display:flex; justify-content:center; align-items:center; background:repeating-conic-gradient(#171a22 0 25%, #12151b 0 50%) 0 0/16px 16px; min-height:120px; padding:8px; }
+  canvas.crop{ display:block; cursor:grab; touch-action:none; max-width:100%; }
+  canvas.crop:active{ cursor:grabbing; }
+  .card-foot{ display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .card-foot input[type=range]{ flex:1; margin:0; }
+  .card-warn{ font-size:.68rem; color:var(--warn); margin-top:8px; line-height:1.4; }
+
+  /* Seamless */
+  .strip-wrap{ position:relative; background:repeating-conic-gradient(#171a22 0 25%, #12151b 0 50%) 0 0/16px 16px; padding:10px; overflow-x:auto; }
+  canvas#strip{ display:block; margin:0 auto; cursor:grab; touch-action:none; }
+  canvas#strip:active{ cursor:grabbing; }
+  .strip-ctl{ display:flex; gap:14px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+  .strip-ctl .zm{ flex:1; min-width:200px; display:flex; align-items:center; gap:10px; font-size:.74rem; color:var(--ink-soft); }
+  .strip-ctl .zm input{ flex:1; margin:0; }
+  .swipe-area{ display:grid; grid-template-columns:auto 1fr; gap:30px; align-items:start; }
+  .phone{ position:relative; padding:12px; background:#07080b; border:1px solid var(--line); width:max-content; }
+  .phone::before{ content:''; position:absolute; inset:4px; border:1px solid rgba(92,127,158,.35); pointer-events:none; }
+  .phone .pd{ position:absolute; width:8px; height:8px; background:var(--blue); border:2px solid var(--bg); transform:translate(-50%,-50%) rotate(45deg); box-shadow:0 0 0 1px rgba(231,234,240,.4); z-index:2; }
+  .pd.tl{ top:4px; left:4px; } .pd.tr{ top:4px; left:calc(100% - 4px); } .pd.bl{ top:calc(100% - 4px); left:4px; } .pd.br{ top:calc(100% - 4px); left:calc(100% - 4px); }
+  .scr{ width:300px; background:#fff; color:#14171c; font-family:system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size:12px; }
+  .scr .hd{ display:flex; align-items:center; gap:8px; padding:9px 10px; }
+  .scr .av{ width:28px; height:28px; border-radius:50%; background:#5c7f9e; }
+  .scr .nm{ font-weight:700; }
+  .swiper{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; }
+  .swiper::-webkit-scrollbar{ display:none; }
+  .swiper canvas{ flex:none; scroll-snap-align:start; display:block; }
+  .scr .ft{ display:flex; justify-content:center; gap:4px; padding:10px 0 12px; }
+  .scr .ft i{ width:6px; height:6px; border-radius:50%; background:#c9ced6; }
+  .scr .ft i.on{ background:#2f6fd6; }
+  .slides{ display:flex; flex-wrap:wrap; gap:12px; }
+  .slide{ display:flex; flex-direction:column; gap:6px; align-items:center; }
+  .slide canvas{ display:block; border:1px solid var(--line); }
+  .slide span{ font-size:.66rem; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .swipe-notes p{ font-size:.8rem; color:#c3c9d4; line-height:1.6; margin:0 0 10px; max-width:60ch; }
+  .swipe-notes b{ color:var(--ink); font-weight:500; }
+  .swipe-nav{ display:flex; gap:6px; justify-content:center; margin-top:10px; }
+
+  /* Side */
+  .side{ flex:0 0 380px; min-width:0; padding:26px 26px 30px; display:flex; flex-direction:column; gap:26px; overflow:auto; }
+  .drop{ border:1px dashed var(--line); background:var(--panel); padding:14px; text-align:center; cursor:pointer; font-size:.78rem; color:var(--ink-soft); line-height:1.5; }
+  .drop:hover, .drop.drag{ border-color:var(--blue2); color:var(--ink); }
+  .drop:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  .drop b{ color:var(--ink); font-weight:500; }
+  .src-info{ margin-top:12px; }
+  .focal-wrap{ position:relative; display:inline-block; cursor:crosshair; max-width:100%; line-height:0; border:1px solid var(--line); }
+  .focal-wrap canvas{ display:block; max-width:100%; }
+  .focal-dot{ position:absolute; width:14px; height:14px; transform:translate(-50%,-50%) rotate(45deg); border:2px solid #fff; background:var(--blue); box-shadow:0 0 0 1px rgba(0,0,0,.6); pointer-events:none; }
+  .src-meta{ font-size:.72rem; color:#c3c9d4; margin-top:8px; line-height:1.5; }
+  .src-meta code{ font-family:var(--font-mono); font-size:.7rem; color:#8fb0d6; }
+
+  .plat{ margin-bottom:6px; }
+  .plat-head{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
+  .plat:first-child .plat-head{ border-top:none; }
+  .plat-head b{ font-size:.8rem; font-weight:500; }
+  .plat-head .n{ font-size:.66rem; color:var(--blue2); margin-left:6px; font-weight:400; }
+  .sizes{ display:flex; flex-direction:column; gap:7px; padding:2px 0 8px; }
+  .check{ display:flex; align-items:center; gap:9px; font-size:.78rem; color:var(--ink-soft); cursor:pointer; line-height:1.35; }
+  .check input{ accent-color:var(--blue); width:14px; height:14px; margin:0; flex:none; }
+  .check:has(input:checked){ color:var(--ink); }
+  .check code{ margin-left:auto; font-family:var(--font-mono); font-size:.68rem; color:#4d5563; }
+  .check:has(input:checked) code{ color:#8fb0d6; }
+  .check small{ display:block; font-size:.68rem; color:var(--ink-soft); margin-top:2px; }
+  .check .rm{ margin-left:6px; }
+
+  .fld{ display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+  .fld label{ font-size:.76rem; color:var(--ink); }
+  input[type=text], input[type=number], select{ width:100%; background:var(--panel); border:1px solid var(--line); color:var(--ink); font-family:var(--font-ui); font-size:.84rem; padding:8px 10px; border-radius:0; outline:none; }
+  input:focus, select:focus{ border-color:var(--blue2); }
+  input[type=color]{ width:44px; height:34px; padding:2px; background:var(--panel); border:1px solid var(--line); cursor:pointer; }
+  .three{ display:grid; grid-template-columns:1.3fr .8fr .8fr auto; gap:6px; align-items:end; }
+  .row-val{ display:flex; justify-content:space-between; font-size:.76rem; color:#c3c9d4; margin-top:12px; }
+  .row-val .v{ color:var(--blue2); font-size:.7rem; font-variant-numeric:tabular-nums; }
+  input[type=range]{ width:100%; -webkit-appearance:none; appearance:none; height:2px; background:var(--line); outline:none; margin:10px 0 2px; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:13px; height:13px; background:var(--blue); border:2px solid var(--bg); box-shadow:0 0 0 1px var(--blue2); transform:rotate(45deg); cursor:pointer; }
+  input[type=range]::-moz-range-thumb{ width:11px; height:11px; background:var(--blue); border:2px solid var(--bg); box-shadow:0 0 0 1px var(--blue2); transform:rotate(45deg); cursor:pointer; border-radius:0; }
+  input[type=range]:focus-visible::-webkit-slider-thumb{ box-shadow:0 0 0 2px #fff; }
+  .scale{ display:flex; justify-content:space-between; font-size:.64rem; color:#4d5563; }
+  .sub{ font-size:.7rem; color:var(--ink-soft); margin:14px 0 8px; letter-spacing:.04em; }
+
+  button.tool{
+    --c:var(--blue2);
+    border:1px solid var(--line); background:
+      linear-gradient(var(--c),var(--c)) top left/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) top left/1px 8px no-repeat,
+      linear-gradient(var(--c),var(--c)) top right/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) top right/1px 8px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom left/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom left/1px 8px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom right/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom right/1px 8px no-repeat,
+      var(--panel);
+    box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--panel-edge);
+    color:var(--ink); font-family:var(--font-ui); font-size:.72rem; letter-spacing:.04em; padding:11px 6px; cursor:pointer;
+  }
+  button.tool:hover{ --c:#fff; }
+  button.tool:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  button.tool.active{ --c:var(--blue); background-color:rgba(63,111,168,.18); color:#fff; }
+  .seg{ display:grid; gap:6px; }
+  .seg.c2{ grid-template-columns:repeat(2,1fr); } .seg.c3{ grid-template-columns:repeat(3,1fr); }
+  button.generate{ width:100%; background:var(--blue); border:1px solid var(--blue2); color:#fff; font-family:var(--font-ui); font-size:.72rem; text-transform:uppercase; letter-spacing:.2em; padding:14px 10px; cursor:pointer; box-shadow:inset 0 0 0 3px var(--blue), inset 0 0 0 4px rgba(231,234,240,.35); }
+  button.generate:hover{ background:#4a7cb8; }
+  button.generate:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  button.generate:disabled{ opacity:.45; cursor:not-allowed; }
+  button.mini{ background:transparent; border:1px solid var(--line); color:var(--ink-soft); font-family:var(--font-ui); font-size:.66rem; letter-spacing:.05em; padding:5px 9px; cursor:pointer; white-space:nowrap; }
+  button.mini:hover{ color:var(--ink); border-color:var(--blue2); }
+  button.mini.danger:hover{ color:#e3b4b4; border-color:var(--danger); }
+  button.mini:disabled{ opacity:.35; cursor:not-allowed; }
+  button.mini:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+
+  .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:30; background:var(--panel); border:1px solid var(--blue2); color:var(--ink); font-size:.76rem; padding:10px 16px; max-width:90vw; opacity:0; pointer-events:none; transition:opacity .2s; }
+  .toast.show{ opacity:1; } .toast.err{ border-color:var(--danger); color:#e3b4b4; }
+
+  @media (max-width:1100px){ .swipe-area{ grid-template-columns:1fr; } .card.wide{ grid-column:auto; } }
+  @media (max-width:860px){
+    body{ height:auto; overflow:auto; }
+    .app{ flex-direction:column; }
+    .stage{ border-right:none; border-bottom:1px solid var(--line); padding:14px; }
+    .preview{ margin:22px 10px; overflow:visible; padding:10px 6px 24px; }
+    .side{ flex:none; padding:24px 20px; overflow:visible; }
+    header{ padding:16px 20px; }
+    .head-actions{ margin-left:0; width:100%; }
+    #modeSeg{ min-width:0; flex:1; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Image resizer</h1>
+  <span class="count" id="count"></span>
+  <div class="head-actions">
+    <div class="seg c2" id="modeSeg">
+      <button class="tool active" data-v="formats">Platform sizes</button>
+      <button class="tool" data-v="seam">Seamless carousel</button>
+    </div>
+    <button class="generate" id="btnAll" disabled>Download all</button>
+  </div>
+</header>
+
+<div class="app">
+  <div class="stage">
+    <div class="rail-frame">
+      <div class="rail-d tl"></div><div class="rail-d tr"></div>
+      <div class="rail-d bl"></div><div class="rail-d br"></div>
+      <div class="preview" id="preview">
+        <div class="empty-state" id="empty" tabindex="0" role="button" aria-label="Upload an image">
+          <h2>Drop an image to start</h2>
+          <p>One image becomes every size you need for social media and display ads, or a panorama split into carousel slides that join when people swipe.</p>
+          <button class="tool" style="padding:11px 20px" tabindex="-1">Choose an image</button>
+        </div>
+
+        <!-- FORMATS -->
+        <section id="vFormats" hidden>
+          <div class="grid" id="grid"></div>
+          <div class="hint" id="gridHint">Drag inside a crop to move it, scroll or use the slider to zoom. Click on the source image in the panel to set the focus for every size at once. On 1080 × 1920 sizes, the red areas are approximately where the Reels interface covers the image, based on Meta's guidance; Stories cover less at the bottom.</div>
+        </section>
+
+        <!-- SEAMLESS -->
+        <div id="vSeam" hidden style="display:flex;flex-direction:column;gap:30px">
+          <section>
+            <div class="group-title">Panorama</div>
+            <div class="strip-wrap" id="stripWrap"><canvas id="strip"></canvas></div>
+            <div class="strip-ctl">
+              <div class="zm"><label for="sZoom">Zoom</label><input type="range" id="sZoom" min="1" max="4" step="0.01"></div>
+              <button class="mini" id="sReset">Reset position</button>
+            </div>
+            <div class="hint">Drag to move the image across the slides. The dashed lines are where one slide ends and the next begins.</div>
+          </section>
+          <section>
+            <div class="group-title">Swipe preview</div>
+            <div class="swipe-area">
+              <div>
+                <div class="phone"><span class="pd tl"></span><span class="pd tr"></span><span class="pd bl"></span><span class="pd br"></span>
+                  <div class="scr"><div class="hd"><div class="av"></div><span class="nm">yourbrand</span></div>
+                    <div class="swiper" id="swiper"></div>
+                    <div class="ft" id="dots"></div></div>
+                </div>
+                <div class="swipe-nav"><button class="mini" id="swPrev">Previous</button><button class="mini" id="swNext">Next</button></div>
+              </div>
+              <div class="swipe-notes">
+                <p><b>Swipe inside the phone</b> to check that the image flows from one slide to the next without jumps.</p>
+                <p><b>Keep faces, products and text away from the dashed lines.</b> Each slide is seen alone first, and a word or face split between two slides reads badly before the swipe.</p>
+                <p><b>Make the first slide work by itself.</b> It is the only one people see in the feed. A partial element at its right edge invites the swipe.</p>
+                <p><b>Upload the slides in order</b> and in the same post, using the numbered files.</p>
+              </div>
+            </div>
+          </section>
+          <section>
+            <div class="group-title">Slides</div>
+            <div class="slides" id="slides"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div>
+      <div class="group-title">Source image</div>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Upload image"><b>Choose an image</b><br>or drop it here or on the preview</div>
+      <input type="file" id="fileIn" accept="image/*" hidden>
+      <div class="src-info" id="srcInfo" hidden>
+        <div class="focal-wrap" id="focalWrap"><canvas id="focalCv"></canvas><span class="focal-dot" id="focalDot"></span></div>
+        <div class="src-meta" id="srcMeta"></div>
+      </div>
+    </div>
+
+    <div id="sideFormats">
+      <div class="group-title">Sizes</div>
+      <div id="platforms"></div>
+      <div class="sub">Custom size</div>
+      <div class="three">
+        <div class="fld" style="margin:0"><label for="cName">Name</label><input type="text" id="cName" placeholder="Banner"></div>
+        <div class="fld" style="margin:0"><label for="cW">Width</label><input type="number" id="cW" min="16" max="8000" placeholder="1080"></div>
+        <div class="fld" style="margin:0"><label for="cH">Height</label><input type="number" id="cH" min="16" max="8000" placeholder="1080"></div>
+        <button class="tool" id="cAdd" style="padding:9px 10px">Add</button>
+      </div>
+    </div>
+
+    <div id="sideSeam" hidden>
+      <div class="group-title">Carousel</div>
+      <div class="sub" style="margin-top:0">Slide format</div>
+      <div class="seg c2" id="seamRatio">
+        <button class="tool" data-v="1:1">Square 1080 × 1080</button>
+        <button class="tool" data-v="4:5">Portrait 1080 × 1350</button>
+      </div>
+      <div class="row-val"><label for="seamN">Number of slides</label><span class="v" id="seamNv"></span></div>
+      <input type="range" id="seamN" min="2" max="10" step="1">
+      <div class="scale"><span>2</span><span>10</span></div>
+      <label class="check" style="margin-top:14px"><input type="checkbox" id="seamGuides" checked> Show the lines between slides</label>
+      <div class="hint">Portrait 4:5 takes more space in the feed. The panorama is cut into equal slides of the chosen size.</div>
+    </div>
+
+    <div>
+      <div class="group-title">Filling</div>
+      <div class="seg c3" id="fitSeg">
+        <button class="tool" data-v="fill">Crop to fill</button>
+        <button class="tool" data-v="blur">Fit, blurred</button>
+        <button class="tool" data-v="color">Fit, color</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:10px" id="bgRow">
+        <input type="color" id="bgColor" aria-label="Background color"><span class="hint" style="margin:0">Background color around the image</span>
+      </div>
+      <div class="hint">"Crop to fill" cuts the edges. The "Fit" options keep the whole image and fill the empty space.</div>
+    </div>
+
+    <div>
+      <div class="group-title">File</div>
+      <div class="seg c3" id="fmtSeg">
+        <button class="tool" data-v="jpeg">JPG</button>
+        <button class="tool" data-v="png">PNG</button>
+        <button class="tool" data-v="webp">WebP</button>
+      </div>
+      <div id="qRow">
+        <div class="row-val"><label for="quality">Quality</label><span class="v" id="qv"></span></div>
+        <input type="range" id="quality" min="60" max="100" step="1">
+      </div>
+      <div class="fld" style="margin-top:12px"><label for="base">File name</label><input type="text" id="base" placeholder="campaign-name"></div>
+      <div class="hint">JPG is the safest choice for ads. PNG keeps sharp text and logos but files are larger. "Download all" saves a single .zip file. Settings are saved in this browser; the image is not.</div>
+    </div>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uid = () => Math.random().toString(36).slice(2, 9);
+const slug = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'image';
+
+const PLATFORMS = [
+  { id:'ig', name:'Instagram', sizes:[['ig-sq','Feed square',1080,1080],['ig-pt','Feed portrait',1080,1350],['ig-st','Stories and Reels',1080,1920]] },
+  { id:'fb', name:'Facebook', sizes:[['fb-sq','Feed square',1080,1080],['fb-pt','Feed portrait',1080,1350],['fb-link','Link, landscape',1200,628],['fb-st','Stories and Reels',1080,1920],['fb-cover','Page cover',851,315]] },
+  { id:'tt', name:'TikTok', sizes:[['tt-v','Vertical',1080,1920]] },
+  { id:'li', name:'LinkedIn', sizes:[['li-land','Feed landscape',1200,627],['li-sq','Feed square',1080,1080],['li-pt','Feed portrait',1080,1350],['li-cover','Company cover',1128,191],['li-banner','Profile banner',1584,396]] },
+  { id:'x', name:'X', sizes:[['x-post','Post image',1600,900],['x-header','Header',1500,500]] },
+  { id:'yt', name:'YouTube', sizes:[['yt-thumb','Thumbnail',1280,720],['yt-banner','Channel banner',2560,1440]] },
+  { id:'pin', name:'Pinterest', sizes:[['pin-std','Standard pin',1000,1500]] },
+  { id:'wa', name:'WhatsApp', sizes:[['wa-status','Status',1080,1920]] },
+  { id:'gd', name:'Google Display', sizes:[['gd-mr','Medium rectangle',300,250],['gd-lr','Large rectangle',336,280],['gd-lb','Leaderboard',728,90],['gd-hp','Half page',300,600],['gd-ws','Wide skyscraper',160,600],['gd-mb','Mobile banner',320,50],['gd-rl','Responsive landscape',1200,628],['gd-rs','Responsive square',1200,1200]] }
+];
+
+/* ---------- State ---------- */
+const KEY = 'img-resizer:v1';
+let st = { mode:'formats', sel:['ig-sq','ig-pt','ig-st','fb-link'], custom:[], fit:'fill', bg:'#ffffff', fmt:'jpeg', q:90, base:'', seam:{ ratio:'4:5', n:3, guides:true } };
+try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) st = { ...st, ...s, seam:{ ...st.seam, ...(s.seam || {}) } }; } catch(_) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch(_) {} };
+
+let img = null;          // { el, w, h, prev, name }
+let focal = { x:.5, y:.5 };
+const crops = {};        // targetId -> { zoom, cx, cy }
+let seamCrop = null;
+
+function allTargets(){
+  const out = [];
+  for (const p of PLATFORMS) for (const [id, name, w, h] of p.sizes) out.push({ id, name, w, h, plat:p.name });
+  for (const c of st.custom) out.push({ id:c.id, name:c.name, w:c.w, h:c.h, plat:'Custom' });
+  return out;
+}
+const selTargets = () => allTargets().filter(t => st.sel.includes(t.id));
+
+/* ---------- Drawing ---------- */
+function baseScale(W, H){
+  return st.fit === 'fill' ? Math.max(W / img.w, H / img.h) : Math.min(W / img.w, H / img.h);
+}
+function clampCrop(c, W, H){
+  const s = baseScale(W, H) * c.zoom;
+  const vw = W / s, vh = H / s;
+  if (st.fit === 'fill' || c.zoom > 1){
+    c.cx = vw >= img.w ? img.w / 2 : Math.min(img.w - vw / 2, Math.max(vw / 2, c.cx));
+    c.cy = vh >= img.h ? img.h / 2 : Math.min(img.h - vh / 2, Math.max(vh / 2, c.cy));
+  } else { c.cx = img.w / 2; c.cy = img.h / 2; }
+  return c;
+}
+function newCrop(W, H){ return clampCrop({ zoom:1, cx:focal.x * img.w, cy:focal.y * img.h }, W, H); }
+let blurSrc = null;
+function getBlurSrc(){
+  if (blurSrc) return blurSrc;
+  const c = document.createElement('canvas'); const k = 32 / Math.max(img.w, img.h);
+  c.width = Math.max(2, Math.round(img.w * k)); c.height = Math.max(2, Math.round(img.h * k));
+  const x = c.getContext('2d'); x.drawImage(img.prev, 0, 0, c.width, c.height);
+  blurSrc = c; return c;
+}
+function draw(ctx, W, H, c, src){
+  ctx.save();
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  if (st.fit !== 'fill'){
+    if (st.fit === 'color'){ ctx.fillStyle = st.bg; ctx.fillRect(0, 0, W, H); }
+    else {
+      const b = getBlurSrc(); const s = Math.max(W / b.width, H / b.height) * 1.1;
+      ctx.drawImage(b, (W - b.width * s) / 2, (H - b.height * s) / 2, b.width * s, b.height * s);
+      ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(0, 0, W, H);
+    }
+  }
+  const s = baseScale(W, H) * c.zoom;
+  ctx.drawImage(src, 0, 0, src.width || src.naturalWidth, src.height || src.naturalHeight, W / 2 - c.cx * s, H / 2 - c.cy * s, img.w * s, img.h * s);
+  ctx.restore();
+}
+
+/* ---------- Formats view ---------- */
+function displaySize(t){
+  const maxW = t.w / t.h > 2.4 ? 540 : 250, maxH = 250;
+  const k = Math.min(maxW / t.w, maxH / t.h, 1);
+  return { dw:Math.max(20, Math.round(t.w * k)), dh:Math.max(12, Math.round(t.h * k)) };
+}
+function renderGrid(){
+  const ts = selTargets();
+  $('#grid').innerHTML = ts.length ? ts.map(t => {
+    const { dw } = displaySize(t);
+    return `<div class="card${dw > 300 ? ' wide' : ''}" data-t="${t.id}">
+      <div class="card-top"><div><b>${esc(t.name)}</b><span class="plat">${esc(t.plat)}</span></div><code>${t.w} × ${t.h}</code></div>
+      <div class="cv-wrap"><canvas class="crop" aria-label="Crop for ${esc(t.plat)} ${esc(t.name)}"></canvas></div>
+      <div class="card-foot"><input type="range" min="1" max="4" step="0.01" aria-label="Zoom"><button class="mini" data-reset>Reset</button><button class="mini" data-dl>Download</button></div>
+      <div class="card-warn" hidden></div>
+    </div>`;
+  }).join('') : '<div class="hint">Select at least one size in the panel.</div>';
+  ts.forEach(t => { if (!crops[t.id]) crops[t.id] = newCrop(t.w, t.h); drawCard(t); });
+  updateCount();
+}
+function drawCard(t){
+  const card = document.querySelector(`.card[data-t="${t.id}"]`); if (!card) return;
+  const cv = card.querySelector('canvas'); const { dw, dh } = displaySize(t);
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(dw * dpr)){ cv.width = Math.round(dw * dpr); cv.height = Math.round(dh * dpr); cv.style.width = dw + 'px'; cv.style.height = dh + 'px'; }
+  const c = clampCrop(crops[t.id], t.w, t.h);
+  const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height);
+  // draw at display scale: map target space into canvas
+  ctx.save(); ctx.scale(cv.width / t.w, cv.height / t.h); draw(ctx, t.w, t.h, c, img.prev); ctx.restore();
+  if (/1920$/.test(t.h + '') && t.w === 1080 && st.fit === 'fill') drawSafe(ctx, cv.width, cv.height);
+  card.querySelector('input[type=range]').value = c.zoom;
+  const up = baseScale(t.w, t.h) * c.zoom;
+  const w = card.querySelector('.card-warn');
+  if (up > 1.05){ w.hidden = false; w.textContent = `Enlarged ${Math.round((up - 1) * 100)}% beyond the original resolution. It may look soft; use a larger source if you can.`; }
+  else w.hidden = true;
+}
+function drawSafe(ctx, W, H){
+  ctx.save();
+  ctx.fillStyle = 'rgba(199,122,122,.22)';
+  ctx.fillRect(0, 0, W, H * .14); ctx.fillRect(0, H * .65, W, H * .35);
+  ctx.strokeStyle = 'rgba(199,122,122,.9)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H * .14); ctx.lineTo(W, H * .14); ctx.moveTo(0, H * .65); ctx.lineTo(W, H * .65); ctx.stroke();
+  ctx.restore();
+}
+function targetById(id){ return allTargets().find(t => t.id === id); }
+
+/* drag + zoom on cards */
+let drag = null;
+$('#grid').addEventListener('pointerdown', (e) => {
+  const cv = e.target.closest('canvas.crop'); if (!cv) return;
+  const t = targetById(cv.closest('.card').dataset.t);
+  drag = { t, x:e.clientX, y:e.clientY, cv };
+  cv.setPointerCapture(e.pointerId);
+});
+$('#grid').addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const { t, cv } = drag; const c = crops[t.id];
+  const disp = cv.getBoundingClientRect().width / t.w;
+  const s = baseScale(t.w, t.h) * c.zoom * disp;
+  c.cx -= (e.clientX - drag.x) / s; c.cy -= (e.clientY - drag.y) / s;
+  drag.x = e.clientX; drag.y = e.clientY;
+  drawCard(t);
+});
+const endDrag = () => { drag = null; };
+$('#grid').addEventListener('pointerup', endDrag);
+$('#grid').addEventListener('pointercancel', endDrag);
+$('#grid').addEventListener('wheel', (e) => {
+  const cv = e.target.closest('canvas.crop'); if (!cv) return;
+  e.preventDefault();
+  const t = targetById(cv.closest('.card').dataset.t); const c = crops[t.id];
+  c.zoom = Math.min(4, Math.max(1, c.zoom * Math.exp(-e.deltaY * .0015)));
+  drawCard(t);
+}, { passive:false });
+$('#grid').addEventListener('input', (e) => {
+  if (e.target.type !== 'range') return;
+  const t = targetById(e.target.closest('.card').dataset.t); crops[t.id].zoom = +e.target.value; drawCard(t);
+});
+$('#grid').addEventListener('click', async (e) => {
+  const card = e.target.closest('.card'); if (!card) return;
+  const t = targetById(card.dataset.t);
+  if (e.target.closest('[data-reset]')){ crops[t.id] = newCrop(t.w, t.h); drawCard(t); }
+  if (e.target.closest('[data-dl]')){
+    const f = await renderFile(t.w, t.h, (ctx) => draw(ctx, t.w, t.h, crops[t.id], img.el));
+    saveBlob(f.blob, fileName(t, f.ext)); toast(`${t.name} downloaded.`);
+  }
+});
+
+/* ---------- Seamless view ---------- */
+function seamDims(){ const sw = 1080, sh = st.seam.ratio === '4:5' ? 1350 : 1080; return { sw, sh, W:sw * st.seam.n, H:sh }; }
+function stripDisplay(){
+  const { W, H } = seamDims();
+  const avail = Math.max(280, $('#stripWrap').clientWidth - 20);
+  const k = Math.min(avail / W, 360 / H);
+  return { k, dw:Math.round(W * k), dh:Math.round(H * k) };
+}
+function renderSeam(){
+  if (!img) return;
+  const { W, H, sw, sh } = seamDims();
+  if (!seamCrop) seamCrop = newCrop(W, H);
+  clampCrop(seamCrop, W, H);
+  const { dw, dh } = stripDisplay(); const dpr = window.devicePixelRatio || 1;
+  const cv = $('#strip'); cv.width = Math.round(dw * dpr); cv.height = Math.round(dh * dpr); cv.style.width = dw + 'px'; cv.style.height = dh + 'px';
+  const ctx = cv.getContext('2d');
+  ctx.save(); ctx.scale(cv.width / W, cv.height / H); draw(ctx, W, H, seamCrop, img.prev); ctx.restore();
+  if (st.seam.guides){
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = Math.max(1, dpr); ctx.setLineDash([6 * dpr, 5 * dpr]);
+    ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 3;
+    for (let i = 1; i < st.seam.n; i++){ const x = Math.round(i * sw / W * cv.width) + .5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cv.height); ctx.stroke(); }
+    ctx.restore();
+    ctx.save(); ctx.font = `${600} ${11 * dpr}px ${getComputedStyle(document.body).fontFamily}`; ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 4;
+    for (let i = 0; i < st.seam.n; i++) ctx.fillText(String(i + 1).padStart(2, '0'), (i * sw / W) * cv.width + 8 * dpr, 18 * dpr);
+    ctx.restore();
+  }
+  $('#sZoom').value = seamCrop.zoom;
+  // slides from the strip
+  const sk = 300 / sw, sdw = 300, sdh = Math.round(sh * sk);
+  const swiper = $('#swiper'); const scroll = swiper.scrollLeft;
+  swiper.innerHTML = ''; $('#slides').innerHTML = '';
+  for (let i = 0; i < st.seam.n; i++){
+    const c = document.createElement('canvas'); c.width = sdw * dpr; c.height = sdh * dpr; c.style.width = sdw + 'px'; c.style.height = sdh + 'px';
+    const x = c.getContext('2d'); x.scale(c.width / sw, c.height / sh); x.translate(-i * sw, 0); draw(x, W, H, seamCrop, img.prev);
+    swiper.appendChild(c);
+    const t = document.createElement('div'); t.className = 'slide';
+    const tc = document.createElement('canvas'); const tw = 130, th = Math.round(sh * 130 / sw);
+    tc.width = tw * dpr; tc.height = th * dpr; tc.style.width = tw + 'px'; tc.style.height = th + 'px';
+    tc.getContext('2d').drawImage(c, 0, 0, tc.width, tc.height);
+    t.appendChild(tc);
+    t.insertAdjacentHTML('beforeend', `<span>Slide ${String(i + 1).padStart(2, '0')} · ${sw} × ${sh}</span><button class="mini" data-slide="${i}">Download</button>`);
+    $('#slides').appendChild(t);
+  }
+  swiper.scrollLeft = scroll;
+  updateDots();
+  const up = baseScale(W, H) * seamCrop.zoom;
+  updateCount(up > 1.05 ? `enlarged ${Math.round((up - 1) * 100)}%, may look soft` : '');
+}
+function updateDots(){
+  const sw = $('#swiper'); const i = Math.round(sw.scrollLeft / 300);
+  $('#dots').innerHTML = Array.from({ length:st.seam.n }, (_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('');
+}
+$('#swiper').addEventListener('scroll', () => { clearTimeout(window._dt); window._dt = setTimeout(updateDots, 60); });
+$('#swPrev').addEventListener('click', () => $('#swiper').scrollBy({ left:-300, behavior:'smooth' }));
+$('#swNext').addEventListener('click', () => $('#swiper').scrollBy({ left:300, behavior:'smooth' }));
+let sdrag = null;
+$('#strip').addEventListener('pointerdown', (e) => { sdrag = { x:e.clientX, y:e.clientY }; $('#strip').setPointerCapture(e.pointerId); });
+$('#strip').addEventListener('pointermove', (e) => {
+  if (!sdrag) return;
+  const { W, H } = seamDims(); const disp = $('#strip').getBoundingClientRect().width / W;
+  const s = baseScale(W, H) * seamCrop.zoom * disp;
+  seamCrop.cx -= (e.clientX - sdrag.x) / s; seamCrop.cy -= (e.clientY - sdrag.y) / s;
+  sdrag.x = e.clientX; sdrag.y = e.clientY;
+  renderSeamLight();
+});
+$('#strip').addEventListener('pointerup', () => { sdrag = null; renderSeam(); });
+$('#strip').addEventListener('pointercancel', () => { sdrag = null; renderSeam(); });
+$('#strip').addEventListener('wheel', (e) => { e.preventDefault(); seamCrop.zoom = Math.min(4, Math.max(1, seamCrop.zoom * Math.exp(-e.deltaY * .0015))); renderSeam(); }, { passive:false });
+$('#sZoom').addEventListener('input', (e) => { seamCrop.zoom = +e.target.value; renderSeamLight(); });
+$('#sZoom').addEventListener('change', renderSeam);
+$('#sReset').addEventListener('click', () => { const { W, H } = seamDims(); seamCrop = newCrop(W, H); renderSeam(); });
+let rafS = 0;
+function renderSeamLight(){ cancelAnimationFrame(rafS); rafS = requestAnimationFrame(renderSeam); }
+$('#slides').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-slide]'); if (!b) return;
+  const i = +b.dataset.slide; const f = await renderSlide(i);
+  saveBlob(f.blob, slideName(i, f.ext)); toast(`Slide ${i + 1} downloaded.`);
+});
+
+/* ---------- Export ---------- */
+const MIME = { jpeg:'image/jpeg', png:'image/png', webp:'image/webp' };
+const EXT = { 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp' };
+function renderFile(W, H, paint){
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  if (st.fmt === 'jpeg'){ ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); }
+  paint(ctx);
+  return new Promise((res, rej) => c.toBlob(b => b ? res({ blob:b, ext:EXT[b.type] || 'png' }) : rej(), MIME[st.fmt], st.q / 100));
+}
+function renderSlide(i){
+  const { W, H, sw, sh } = seamDims();
+  return renderFile(sw, sh, (ctx) => { ctx.translate(-i * sw, 0); draw(ctx, W, H, seamCrop, img.el); });
+}
+const baseName = () => slug(st.base || (img ? img.name.replace(/\.[^.]+$/, '') : 'image'));
+const fileName = (t, ext) => `${baseName()}_${slug(t.plat)}-${slug(t.name)}_${t.w}x${t.h}.${ext}`;
+const slideName = (i, ext) => `${baseName()}_carousel-${String(i + 1).padStart(2, '0')}-of-${String(st.seam.n).padStart(2, '0')}.${ext}`;
+function saveBlob(blob, name){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); }
+
+/* minimal ZIP writer (stored, no compression: images are already compressed) */
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8){ let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files){
+  const enc = new TextEncoder(); const parts = []; const central = []; let offset = 0;
+  const d = new Date(); const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1); const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  for (const f of files){
+    const name = enc.encode(f.name), data = f.data, crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, time, true); lh.setUint16(12, date, true); lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+    lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    parts.push(lh, name, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+    ch.setUint16(12, time, true); ch.setUint16(14, date, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+    ch.setUint16(28, name.length, true); ch.setUint16(30, 0, true); ch.setUint16(32, 0, true); ch.setUint16(34, 0, true); ch.setUint16(36, 0, true); ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+    central.push(ch, name);
+    offset += 30 + name.length + data.length;
+  }
+  const cSize = central.reduce((a, p) => a + p.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cSize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end], { type:'application/zip' });
+}
+$('#btnAll').addEventListener('click', async (e) => {
+  if (!img) return;
+  const btn = e.currentTarget; const o = btn.textContent; btn.disabled = true;
+  try {
+    const files = [];
+    if (st.mode === 'formats'){
+      const ts = selTargets(); if (!ts.length){ toast('Select at least one size.', true); return; }
+      for (let i = 0; i < ts.length; i++){
+        const t = ts[i]; btn.textContent = `Preparing ${i + 1} of ${ts.length}`;
+        if (!crops[t.id]) crops[t.id] = newCrop(t.w, t.h);
+        const f = await renderFile(t.w, t.h, (ctx) => draw(ctx, t.w, t.h, clampCrop(crops[t.id], t.w, t.h), img.el));
+        files.push({ name:fileName(t, f.ext), data:new Uint8Array(await f.blob.arrayBuffer()) });
+      }
+      saveBlob(makeZip(files), `${baseName()}_sizes.zip`);
+    } else {
+      for (let i = 0; i < st.seam.n; i++){
+        btn.textContent = `Preparing ${i + 1} of ${st.seam.n}`;
+        const f = await renderSlide(i);
+        files.push({ name:slideName(i, f.ext), data:new Uint8Array(await f.blob.arrayBuffer()) });
+      }
+      saveBlob(makeZip(files), `${baseName()}_carousel.zip`);
+    }
+    toast(`${files.length} files saved in one .zip.`);
+  } catch(_){ toast('The files could not be created. Try a smaller source image.', true); }
+  finally { btn.disabled = false; btn.textContent = o; }
+});
+
+/* ---------- Upload ---------- */
+async function loadFile(file){
+  if (!file || !file.type.startsWith('image/')){ toast('Choose an image file: JPG, PNG or WebP.', true); return; }
+  const url = URL.createObjectURL(file);
+  const el = new Image(); el.src = url;
+  try { await el.decode(); } catch(_){ toast('This image could not be read.', true); return; }
+  const w = el.naturalWidth, h = el.naturalHeight;
+  const k = Math.min(1, 2000 / Math.max(w, h));
+  const prev = document.createElement('canvas'); prev.width = Math.round(w * k); prev.height = Math.round(h * k);
+  const px = prev.getContext('2d'); px.imageSmoothingQuality = 'high'; px.drawImage(el, 0, 0, prev.width, prev.height);
+  if (img && img.url) URL.revokeObjectURL(img.url);
+  img = { el, w, h, prev, name:file.name, url };
+  blurSrc = null; focal = { x:.5, y:.5 };
+  for (const k2 of Object.keys(crops)) delete crops[k2];
+  seamCrop = null;
+  if (!st.base) $('#base').placeholder = slug(file.name.replace(/\.[^.]+$/, ''));
+  renderSource(); showView();
+}
+function renderSource(){
+  $('#srcInfo').hidden = !img; if (!img) return;
+  const cv = $('#focalCv'); const maxW = 326, maxH = 220; const k = Math.min(maxW / img.w, maxH / img.h);
+  const dpr = window.devicePixelRatio || 1; cv.width = Math.round(img.w * k * dpr); cv.height = Math.round(img.h * k * dpr);
+  cv.style.width = Math.round(img.w * k) + 'px'; cv.style.height = Math.round(img.h * k) + 'px';
+  cv.getContext('2d').drawImage(img.prev, 0, 0, cv.width, cv.height);
+  placeDot();
+  const mp = (img.w * img.h / 1e6).toFixed(1);
+  $('#srcMeta').innerHTML = `${esc(img.name)}<br><code>${img.w} × ${img.h}</code> · ${mp} MP. Click the image to set the focus point.`;
+}
+function placeDot(){ const d = $('#focalDot'); d.style.left = focal.x * 100 + '%'; d.style.top = focal.y * 100 + '%'; }
+$('#focalWrap').addEventListener('click', (e) => {
+  const r = $('#focalCv').getBoundingClientRect();
+  focal = { x:Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y:Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+  placeDot();
+  for (const k of Object.keys(crops)) delete crops[k];
+  seamCrop = null;
+  showView(); toast('Focus point set. Every crop was re-centered on it.');
+});
+for (const el of [$('#drop'), $('#empty')]){
+  el.addEventListener('click', () => $('#fileIn').click());
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('#fileIn').click(); } });
+}
+$('#fileIn').addEventListener('change', (e) => { loadFile(e.target.files[0]); e.target.value = ''; });
+for (const el of [$('#drop'), $('#preview')]){
+  el.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files')){ e.preventDefault(); el.classList.add('drag'); } });
+  el.addEventListener('dragleave', () => el.classList.remove('drag'));
+  el.addEventListener('drop', (e) => { e.preventDefault(); el.classList.remove('drag'); loadFile(e.dataTransfer.files[0]); });
+}
+
+/* ---------- Side controls ---------- */
+function renderPlatforms(){
+  const groups = [...PLATFORMS.map(p => ({ id:p.id, name:p.name, items:p.sizes.map(([id, name, w, h]) => ({ id, name, w, h })) }))];
+  if (st.custom.length) groups.push({ id:'custom', name:'Custom', items:st.custom });
+  $('#platforms').innerHTML = groups.map(g => {
+    const on = g.items.filter(i => st.sel.includes(i.id)).length;
+    return `<div class="plat"><div class="plat-head"><b>${esc(g.name)}<span class="n">${on ? on + ' selected' : ''}</span></b><button class="mini" data-all="${g.id}">${on === g.items.length ? 'None' : 'All'}</button></div>
+      <div class="sizes">${g.items.map(i => `<label class="check"><input type="checkbox" data-s="${i.id}" ${st.sel.includes(i.id) ? 'checked' : ''}> ${esc(i.name)} <code>${i.w}×${i.h}</code>${g.id === 'custom' ? `<button class="mini danger rm" data-rm="${i.id}" aria-label="Remove">×</button>` : ''}</label>`).join('')}</div></div>`;
+  }).join('');
+}
+$('#platforms').addEventListener('change', (e) => {
+  const id = e.target.dataset.s; if (!id) return;
+  st.sel = e.target.checked ? [...new Set([...st.sel, id])] : st.sel.filter(x => x !== id);
+  save(); renderPlatforms(); if (img) renderGrid(); else updateCount();
+});
+$('#platforms').addEventListener('click', (e) => {
+  const a = e.target.closest('[data-all]'), r = e.target.closest('[data-rm]');
+  if (r){ e.preventDefault(); st.custom = st.custom.filter(c => c.id !== r.dataset.rm); st.sel = st.sel.filter(x => x !== r.dataset.rm); }
+  else if (a){
+    const items = a.dataset.all === 'custom' ? st.custom.map(c => c.id) : PLATFORMS.find(p => p.id === a.dataset.all).sizes.map(s => s[0]);
+    const allOn = items.every(i => st.sel.includes(i));
+    st.sel = allOn ? st.sel.filter(x => !items.includes(x)) : [...new Set([...st.sel, ...items])];
+  } else return;
+  save(); renderPlatforms(); if (img) renderGrid(); else updateCount();
+});
+$('#cAdd').addEventListener('click', () => {
+  const w = parseInt($('#cW').value, 10), h = parseInt($('#cH').value, 10);
+  if (!(w >= 16 && h >= 16 && w <= 8000 && h <= 8000)){ toast('Width and height must be between 16 and 8000 pixels.', true); return; }
+  const c = { id:'c-' + uid(), name:$('#cName').value.trim() || `Custom ${w}×${h}`, w, h };
+  st.custom.push(c); st.sel.push(c.id); save();
+  $('#cName').value = ''; $('#cW').value = ''; $('#cH').value = '';
+  renderPlatforms(); if (img) renderGrid(); else updateCount();
+});
+function segBind(id, key, after){
+  const el = $(id);
+  const sync = () => el.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.v === String(key.split('.').reduce((o, k) => o[k], st))));
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-v]'); if (!b) return;
+    const ks = key.split('.'); let o = st; for (let i = 0; i < ks.length - 1; i++) o = o[ks[i]]; o[ks[ks.length - 1]] = b.dataset.v;
+    sync(); save(); after && after();
+  });
+  sync();
+}
+segBind('#fitSeg', 'fit', () => { $('#bgRow').hidden = st.fit !== 'color'; for (const k of Object.keys(crops)) clampCrop(crops[k], targetById(k)?.w || 1, targetById(k)?.h || 1); refresh(); });
+segBind('#fmtSeg', 'fmt', () => { $('#qRow').hidden = st.fmt === 'png'; });
+segBind('#seamRatio', 'seam.ratio', () => { seamCrop = null; refresh(); });
+$('#bgRow').hidden = st.fit !== 'color';
+$('#qRow').hidden = st.fmt === 'png';
+$('#bgColor').value = st.bg;
+$('#bgColor').addEventListener('input', (e) => { st.bg = e.target.value; save(); refresh(); });
+$('#quality').value = st.q; $('#qv').textContent = st.q + '%';
+$('#quality').addEventListener('input', (e) => { st.q = +e.target.value; $('#qv').textContent = st.q + '%'; save(); });
+$('#base').value = st.base;
+$('#base').addEventListener('input', (e) => { st.base = e.target.value; save(); });
+$('#seamN').value = st.seam.n; $('#seamNv').textContent = st.seam.n;
+$('#seamN').addEventListener('input', (e) => { st.seam.n = +e.target.value; $('#seamNv').textContent = st.seam.n; save(); seamCrop = null; refresh(); $('#swiper').scrollLeft = 0; });
+$('#seamGuides').checked = st.seam.guides;
+$('#seamGuides').addEventListener('change', (e) => { st.seam.guides = e.target.checked; save(); refresh(); });
+
+$('#modeSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-v]'); if (!b) return;
+  st.mode = b.dataset.v; save(); showView();
+});
+function showView(){
+  document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === st.mode));
+  $('#sideFormats').hidden = st.mode !== 'formats'; $('#sideSeam').hidden = st.mode !== 'seam';
+  $('#empty').hidden = !!img;
+  $('#vFormats').hidden = !img || st.mode !== 'formats';
+  $('#vSeam').hidden = !img || st.mode !== 'seam';
+  $('#btnAll').disabled = !img;
+  refresh();
+}
+function refresh(){
+  if (!img){ updateCount(); return; }
+  if (st.mode === 'formats') renderGrid(); else renderSeam();
+}
+function updateCount(extra){
+  const n = st.mode === 'formats' ? selTargets().length : st.seam.n;
+  const what = st.mode === 'formats' ? `${n} size${n === 1 ? '' : 's'} selected` : `${n} slides of ${st.seam.ratio === '4:5' ? '1080 × 1350' : '1080 × 1080'}`;
+  $('#count').textContent = what + (extra ? `, ${extra}` : '');
+  $('#btnAll').textContent = st.mode === 'formats' ? `Download all (${n})` : `Download ${n} slides`;
+}
+
+let toastT;
+function toast(msg, err){ const t = $('#toast'); t.textContent = msg; t.classList.toggle('err', !!err); t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2800); }
+window.addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTimeout(() => { if (img && st.mode === 'seam') renderSeam(); }, 150); });
+
+renderPlatforms();
+showView();
+})();
+</script>
+</body>
+</html>
